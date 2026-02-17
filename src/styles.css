@@ -225,6 +225,15 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.audio-list .col-bpm {
+  width: 3.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.audio-list .col-key {
+  width: 3.5rem;
+}
+
 .audio-list .col-loop {
   width: 4rem;
 }

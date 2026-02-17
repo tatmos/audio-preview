@@ -9,6 +9,7 @@ import {
   subscribeToTime,
 } from './state.js';
 import { formatMmSs, parseMmSs } from './utils.js';
+import { loadBpm } from './audioAnalysis.js';
 
 /** @type {HTMLElement | null} */
 let containerEl = null;
@@ -104,6 +105,8 @@ export function renderList() {
         <th class="col-grip"></th>
         <th class="col-name">ファイル名</th>
         <th class="col-duration">素材の長さ</th>
+        <th class="col-bpm">BPM</th>
+        <th class="col-key">Key</th>
         <th class="col-loop">ループ</th>
         <th class="col-max">最大再生時間</th>
         <th class="col-controls">再生</th>
@@ -117,6 +120,7 @@ export function renderList() {
 
   items.forEach((item, index) => {
     if (item.duration === null) loadDuration(item);
+    if (item.bpm === null) loadBpm(item);
 
     const tr = document.createElement('tr');
     tr.dataset.index = String(index);
@@ -135,6 +139,14 @@ export function renderList() {
     const durationCell = document.createElement('td');
     durationCell.className = 'col-duration';
     durationCell.textContent = item.duration != null ? formatMmSs(item.duration) : '…';
+
+    const bpmCell = document.createElement('td');
+    bpmCell.className = 'col-bpm';
+    bpmCell.textContent = item.bpm != null ? String(item.bpm) : '…';
+
+    const keyCell = document.createElement('td');
+    keyCell.className = 'col-key';
+    keyCell.textContent = item.key != null && item.key !== '' ? item.key : '—';
 
     const loopCell = document.createElement('td');
     loopCell.className = 'col-loop';
@@ -239,7 +251,7 @@ export function renderList() {
       playingCell.innerHTML = '<span class="playing-mark">▶</span>';
     }
 
-    tr.append(grip, nameCell, durationCell, loopCell, maxCell, controlsCell, positionCell, playingCell);
+    tr.append(grip, nameCell, durationCell, bpmCell, keyCell, loopCell, maxCell, controlsCell, positionCell, playingCell);
 
     tr.addEventListener('click', (e) => {
       if ((e.target.closest('button') || e.target.closest('input') || e.target.closest('.col-position')) !== null) return;

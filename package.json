@@ -8,6 +8,9 @@
     "build": "vite build",
     "preview": "vite preview"
   },
+  "dependencies": {
+    "web-audio-beat-detector": "^8.2.35"
+  },
   "devDependencies": {
     "vite": "^5.4.0"
   }
