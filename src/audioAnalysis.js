@@ -170,7 +170,7 @@ export function analyzeKeyFromSegment(audioBuffer, startSec, endSec) {
   const sr = audioBuffer.sampleRate;
   const startSample = Math.max(0, Math.floor(startSec * sr));
   const endSample = Math.min(audioBuffer.length, Math.ceil(endSec * sr));
-  if (endSample - startSample < sr * 1) return Promise.resolve(null); // 1秒未満は解析しない
+  if (endSample - startSample < sr * 0.5) return Promise.resolve(null); // 0.5秒未満は解析しない
 
   const ch0 = audioBuffer.getChannelData(0);
   const segment = ch0.slice(startSample, endSample);
@@ -197,11 +197,16 @@ export function analyzeKeyFromSegment(audioBuffer, startSec, endSec) {
         'bgate',
         sr
       );
-      const keyPart = (result.key != null ? String(result.key).trim() : '') || '';
+      const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+      let keyPart = result.key != null ? String(result.key).trim() : '';
       const scalePart = (result.scale != null ? String(result.scale).trim() : '') || '';
-      const k = keyPart === 'NaN' ? '' : keyPart;
+      if (keyPart === 'NaN') keyPart = '';
+      const keyNum = Number(keyPart);
+      if (keyPart !== '' && Number.isInteger(keyNum) && keyNum >= 0 && keyNum <= 11) {
+        keyPart = NOTE_NAMES[keyNum];
+      }
       const sc = scalePart === 'NaN' ? '' : scalePart;
-      const keyStr = [k, sc].filter(Boolean).join(' ') || null;
+      const keyStr = [keyPart, sc].filter(Boolean).join(' ') || null;
       return keyStr || null;
     })
     .catch(() => null);

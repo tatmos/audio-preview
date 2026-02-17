@@ -1,10 +1,10 @@
 import './styles.css';
 import { initDropzone } from './dropzone.js';
 import { initList } from './list.js';
-import { getItems, setCurrentIndex, getCurrentIndex, getNextPlaybackAction, setCurrentTime, setPaused, getIsPaused, loadListData, setRealTimeKey, subscribeToRealtime, getRealTimeKey, getRealTimeChord } from './state.js';
+import { getItems, setCurrentIndex, getCurrentIndex, getNextPlaybackAction, setCurrentTime, setPaused, getIsPaused, getStartedAt, setStartedAt, loadListData, setRealTimeKey, subscribeToRealtime, getRealTimeKey, getRealTimeChord } from './state.js';
 import { play as audioPlay, pause as audioPause, setOnEnded, getAudioElement } from './audio.js';
 import { decodeToBuffer, analyzeKeyFromSegment, analyzeChordFromSegment } from './audioAnalysis.js';
-import { formatMmSs } from './utils.js';
+import { formatMmSs, getTrackLength, getListStartTimes } from './utils.js';
 import * as levelMeter from './levelMeter.js';
 import * as levelMeterDisplay from './levelMeterDisplay.js';
 import { listToText, textToList } from './listSaveLoad.js';
@@ -15,6 +15,8 @@ let currentPlayUrl = null;
 let currentPlayBuffer = null;
 /** リアルタイム Key の更新間隔用タイマー ID */
 let realtimeKeyTimerId = null;
+/** 現在トラックでループにより既に再生した秒数（再生経過の加算用） */
+let currentTrackLoopElapsed = 0;
 
 function playItemAtIndex(index) {
   const items = getItems();
@@ -35,17 +37,26 @@ function playItemAtIndex(index) {
   audioPlay(currentPlayUrl);
   setCurrentIndex(index);
   setPaused(false);
+  currentTrackLoopElapsed = 0;
+  startRealtimeKeyUpdates();
   decodeToBuffer(item.file).then((buf) => {
-    if (getCurrentIndex() === index) {
-      currentPlayBuffer = buf;
-      startRealtimeKeyUpdates();
-    }
+    if (getCurrentIndex() !== index) return;
+    currentPlayBuffer = buf;
+    runRealtimeAnalysisOnce(index, buf);
   }).catch(() => {});
 }
 
-function handleEnded() {
-  const action = getNextPlaybackAction();
+/**
+ * getNextPlaybackAction() の結果に従って次曲へ／停止を実行する
+ * @param {{ action: 'loop' | 'next' | 'stop'; index?: number }} action
+ */
+function performPlaybackAction(action) {
   if (action.action === 'loop') {
+    const items = getItems();
+    const idx = getCurrentIndex();
+    if (idx !== null && idx < items.length) {
+      currentTrackLoopElapsed += items[idx].duration ?? 0;
+    }
     setPaused(false);
     audioPlay(currentPlayUrl);
     return;
@@ -53,21 +64,18 @@ function handleEnded() {
   if (action.action === 'next') {
     setCurrentIndex(action.index);
     setPaused(false);
+    currentTrackLoopElapsed = 0;
     const items = getItems();
     const item = items[action.index];
     if (currentPlayUrl) URL.revokeObjectURL(currentPlayUrl);
     currentPlayUrl = URL.createObjectURL(item.file);
     currentPlayBuffer = null;
-    if (realtimeKeyTimerId != null) {
-      clearInterval(realtimeKeyTimerId);
-      realtimeKeyTimerId = null;
-    }
     audioPlay(currentPlayUrl);
+    startRealtimeKeyUpdates();
     decodeToBuffer(item.file).then((buf) => {
-      if (getCurrentIndex() === action.index) {
-        currentPlayBuffer = buf;
-        startRealtimeKeyUpdates();
-      }
+      if (getCurrentIndex() !== action.index) return;
+      currentPlayBuffer = buf;
+      runRealtimeAnalysisOnce(action.index, buf);
     }).catch(() => {});
     return;
   }
@@ -83,6 +91,10 @@ function handleEnded() {
       currentPlayUrl = null;
     }
   }
+}
+
+function handleEnded() {
+  performPlaybackAction(getNextPlaybackAction());
 }
 
 function pausePlayback() {
@@ -104,24 +116,30 @@ function stopPlayback() {
   }
 }
 
+function runRealtimeAnalysisOnce(idx, buffer) {
+  const items = getItems();
+  const item = items[idx];
+  const duration = item?.duration ?? buffer?.duration ?? 0;
+  if (!(duration > 0)) return;
+  const audio = getAudioElement();
+  const t = audio.currentTime;
+  const startSec = Math.max(0, t - 2);
+  const endSec = Math.min(duration, t + 1);
+  if (endSec <= startSec) return;
+  Promise.all([
+    analyzeKeyFromSegment(buffer, startSec, endSec),
+    analyzeChordFromSegment(buffer, startSec, endSec),
+  ]).then(([key, chord]) => {
+    if (getCurrentIndex() === idx) setRealTimeKey(key, chord);
+  });
+}
+
 function startRealtimeKeyUpdates() {
   if (realtimeKeyTimerId != null) return;
   realtimeKeyTimerId = setInterval(() => {
     const idx = getCurrentIndex();
     if (idx === null || !currentPlayBuffer || getIsPaused()) return;
-    const items = getItems();
-    const item = items[idx];
-    const duration = item?.duration ?? currentPlayBuffer.duration;
-    const audio = getAudioElement();
-    const t = audio.currentTime;
-    const startSec = Math.max(0, t - 2);
-    const endSec = Math.min(duration, t + 1);
-    Promise.all([
-      analyzeKeyFromSegment(currentPlayBuffer, startSec, endSec),
-      analyzeChordFromSegment(currentPlayBuffer, startSec, endSec),
-    ]).then(([key, chord]) => {
-      if (getCurrentIndex() === idx) setRealTimeKey(key, chord);
-    });
+    runRealtimeAnalysisOnce(idx, currentPlayBuffer);
   }, 1500);
 }
 
@@ -132,6 +150,62 @@ function seekPlayback(seconds) {
   const sec = Math.max(0, seconds);
   audio.currentTime = sec;
   setCurrentTime(sec);
+}
+
+/**
+ * リスト全体の絶対時間（秒）でシークし、その位置から再生する
+ * @param {number} listTimeSec
+ */
+function seekToAbsoluteListTime(listTimeSec) {
+  const items = getItems();
+  if (items.length === 0) return;
+  const listStartTimes = getListStartTimes(items);
+  const listTotal = items.reduce((s, it) => s + getTrackLength(it), 0);
+  const t = Math.max(0, Math.min(listTimeSec, listTotal));
+  let trackIndex = items.length - 1;
+  let positionInTrack = getTrackLength(items[trackIndex]);
+  for (let i = 0; i < items.length; i++) {
+    const len = getTrackLength(items[i]);
+    if (t < listStartTimes[i] + len) {
+      trackIndex = i;
+      positionInTrack = t - listStartTimes[i];
+      break;
+    }
+  }
+  const item = items[trackIndex];
+  const duration = item.duration ?? 0;
+  const loopElapsed = duration > 0 ? Math.floor(positionInTrack / duration) * duration : 0;
+  const positionInCurrentLoop = duration > 0 ? positionInTrack % duration : 0;
+
+  if (currentPlayUrl) URL.revokeObjectURL(currentPlayUrl);
+  currentPlayUrl = URL.createObjectURL(item.file);
+  currentPlayBuffer = null;
+  if (realtimeKeyTimerId != null) {
+    clearInterval(realtimeKeyTimerId);
+    realtimeKeyTimerId = null;
+  }
+  currentTrackLoopElapsed = loopElapsed;
+  setCurrentIndex(trackIndex);
+  setPaused(false);
+  setStartedAt(Date.now() - t * 1000);
+
+  const audio = getAudioElement();
+  audio.src = currentPlayUrl;
+  const onReady = () => {
+    audio.currentTime = positionInCurrentLoop;
+    setCurrentTime(positionInCurrentLoop);
+    audio.play().catch(() => {});
+    levelMeter.start(audio);
+    startRealtimeKeyUpdates();
+    decodeToBuffer(item.file).then((buf) => {
+      if (getCurrentIndex() === trackIndex) currentPlayBuffer = buf;
+    }).catch(() => {});
+  };
+  if (audio.readyState >= 2) {
+    onReady();
+  } else {
+    audio.addEventListener('canplay', onReady, { once: true });
+  }
 }
 
 /** 次の行に切り替えて再生。最後の行のときは停止。再生中でないときは先頭を再生。 */
@@ -204,6 +278,9 @@ function init() {
   const elapsedEl = document.getElementById('elapsed-display');
   const progressFillEl = document.getElementById('elapsed-progress-fill');
   const progressBarEl = document.querySelector('.elapsed-progress-bar');
+  const progressSegmentsEl = document.getElementById('elapsed-progress-segments');
+  let lastSegmentCount = 0;
+  let lastListTotal = 0;
   const btnNext = document.getElementById('btn-next');
   const levelMetersEl = document.getElementById('level-meters');
   const audio = getAudioElement();
@@ -224,15 +301,41 @@ function init() {
   subscribeToRealtime(updateRealtimeDisplay);
   updateRealtimeDisplay();
 
+  if (progressBarEl) {
+    progressBarEl.addEventListener('click', (e) => {
+      const items = getItems();
+      if (items.length === 0) return;
+      const listTotal = items.reduce((sum, it) => sum + getTrackLength(it), 0);
+      if (listTotal <= 0) return;
+      const rect = progressBarEl.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      seekToAbsoluteListTime(listTotal * ratio);
+    });
+    progressBarEl.style.cursor = 'pointer';
+  }
+
   setInterval(() => {
     const items = getItems();
     const idx = getCurrentIndex();
 
-    const listTotal = items.reduce((sum, it) => sum + (it.duration ?? 0), 0);
+    if (idx !== null && idx < items.length && !getIsPaused()) {
+      const item = items[idx];
+      const startedAt = getStartedAt();
+      if (startedAt != null && item.loop && item.maxLoopSeconds != null && item.maxLoopSeconds > 0) {
+        const elapsed = (Date.now() - startedAt) / 1000;
+        if (elapsed >= item.maxLoopSeconds) {
+          audioPause();
+          performPlaybackAction(getNextPlaybackAction());
+          return;
+        }
+      }
+    }
+
+    const listTotal = items.reduce((sum, it) => sum + getTrackLength(it), 0);
     let listElapsed = 0;
     if (idx !== null && idx >= 0) {
-      for (let i = 0; i < idx; i++) listElapsed += items[i].duration ?? 0;
-      listElapsed += audio.currentTime;
+      const listStartTimes = getListStartTimes(items);
+      listElapsed = listStartTimes[idx] + currentTrackLoopElapsed + audio.currentTime;
     }
     if (elapsedEl) {
       elapsedEl.textContent = `再生経過: ${formatMmSs(listElapsed)} / ${formatMmSs(listTotal)}`;
@@ -242,6 +345,19 @@ function init() {
     if (progressFillEl) progressFillEl.style.width = `${pct}%`;
     if (progressBarEl) {
       progressBarEl.setAttribute('aria-valuenow', String(Math.round(pct)));
+    }
+    if (progressSegmentsEl && (items.length !== lastSegmentCount || listTotal !== lastListTotal)) {
+      lastSegmentCount = items.length;
+      lastListTotal = listTotal;
+      progressSegmentsEl.innerHTML = '';
+      if (items.length > 0 && listTotal > 0) {
+        items.forEach((item) => {
+          const seg = document.createElement('div');
+          seg.className = 'elapsed-progress-segment';
+          seg.style.width = `${(getTrackLength(item) / listTotal) * 100}%`;
+          progressSegmentsEl.appendChild(seg);
+        });
+      }
     }
 
     if (idx !== null) {

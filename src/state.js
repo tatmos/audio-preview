@@ -176,6 +176,14 @@ export function resetStartedAt() {
 }
 
 /**
+ * 再生開始時刻を指定する（絶対時間シーク時に経過と一致させるため）
+ * @param {number | null} timestamp
+ */
+export function setStartedAt(timestamp) {
+  startedAt = timestamp;
+}
+
+/**
  * 次に再生すべきインデックスを算出。
  * ループONかつ最大時間内なら null（同じ曲を続ける）、そうでなければ次のインデックス or null（終了）。
  * @returns {{ action: 'loop' } | { action: 'next'; index: number } | { action: 'stop' }}

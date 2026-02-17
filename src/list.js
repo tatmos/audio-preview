@@ -8,7 +8,7 @@ import {
   subscribe,
   subscribeToTime,
 } from './state.js';
-import { formatMmSs, parseMmSs } from './utils.js';
+import { formatMmSs, parseMmSs, getListStartTimes } from './utils.js';
 import { loadBpm, loadKey } from './audioAnalysis.js';
 
 /** @type {HTMLElement | null} */
@@ -97,6 +97,8 @@ export function renderList() {
     return;
   }
 
+  const listStartTimes = getListStartTimes(items);
+
   const table = document.createElement('table');
   table.className = 'audio-list';
   table.innerHTML = `
@@ -104,6 +106,7 @@ export function renderList() {
       <tr>
         <th class="col-grip"></th>
         <th class="col-name">ファイル名</th>
+        <th class="col-start">再生開始</th>
         <th class="col-duration">素材の長さ</th>
         <th class="col-bpm">BPM</th>
         <th class="col-key">Key</th>
@@ -136,6 +139,10 @@ export function renderList() {
     const nameCell = document.createElement('td');
     nameCell.className = 'col-name';
     nameCell.textContent = item.name;
+
+    const startCell = document.createElement('td');
+    startCell.className = 'col-start';
+    startCell.textContent = formatMmSs(listStartTimes[index]);
 
     const durationCell = document.createElement('td');
     durationCell.className = 'col-duration';
@@ -252,7 +259,7 @@ export function renderList() {
       playingCell.innerHTML = '<span class="playing-mark">▶</span>';
     }
 
-    tr.append(grip, nameCell, durationCell, bpmCell, keyCell, loopCell, maxCell, controlsCell, positionCell, playingCell);
+    tr.append(grip, nameCell, startCell, durationCell, bpmCell, keyCell, loopCell, maxCell, controlsCell, positionCell, playingCell);
 
     tr.addEventListener('click', (e) => {
       if ((e.target.closest('button') || e.target.closest('input') || e.target.closest('.col-position')) !== null) return;

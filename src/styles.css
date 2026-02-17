@@ -106,6 +106,7 @@ body {
 }
 
 .elapsed-progress-bar {
+  position: relative;
   width: 180px;
   height: 6px;
   background: #e0e0e0;
@@ -113,12 +114,37 @@ body {
   overflow: hidden;
 }
 
-.elapsed-progress-fill {
+.elapsed-progress-segments {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.elapsed-progress-segment {
   height: 100%;
+  flex-shrink: 0;
+}
+
+.elapsed-progress-segment:nth-child(odd) {
+  background: #e8e8e8;
+}
+
+.elapsed-progress-segment:nth-child(even) {
+  background: #d4d4d4;
+}
+
+.elapsed-progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
   width: 0%;
   background: #1565c0;
   border-radius: 3px;
   transition: width 0.2s ease-out;
+  pointer-events: none;
 }
 
 .realtime-tonal {
