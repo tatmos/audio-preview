@@ -9,7 +9,7 @@ import {
   subscribeToTime,
 } from './state.js';
 import { formatMmSs, parseMmSs } from './utils.js';
-import { loadBpm } from './audioAnalysis.js';
+import { loadBpm, loadKey } from './audioAnalysis.js';
 
 /** @type {HTMLElement | null} */
 let containerEl = null;
@@ -121,6 +121,7 @@ export function renderList() {
   items.forEach((item, index) => {
     if (item.duration === null) loadDuration(item);
     if (item.bpm === null) loadBpm(item);
+    if (item.key === null) loadKey(item);
 
     const tr = document.createElement('tr');
     tr.dataset.index = String(index);

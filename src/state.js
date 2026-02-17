@@ -21,6 +21,13 @@ let onUpdate = () => {};
 /** @type {() => void} 再生位置のみ更新（リスト全体の再描画を避ける） */
 let onTimeUpdate = () => {};
 
+/** @type {string | null} 再生中のリアルタイム Key 表示用 */
+let realTimeKey = null;
+/** @type {string | null} 再生中のリアルタイムコード表示用 */
+let realTimeChord = null;
+/** @type {() => void} リアルタイム Key/Chord 更新時 */
+let onRealtimeUpdate = () => {};
+
 /**
  * @param {(items: ListItem[], currentIndex: number | null) => void} fn
  */
@@ -34,6 +41,39 @@ export function subscribe(fn) {
  */
 export function subscribeToTime(fn) {
   onTimeUpdate = fn;
+}
+
+/**
+ * リアルタイム Key/Chord 更新時のコールバック
+ * @param {() => void} fn
+ */
+export function subscribeToRealtime(fn) {
+  onRealtimeUpdate = fn;
+}
+
+/**
+ * @returns {string | null}
+ */
+export function getRealTimeKey() {
+  return realTimeKey;
+}
+
+/**
+ * @returns {string | null}
+ */
+export function getRealTimeChord() {
+  return realTimeChord;
+}
+
+/**
+ * @param {string | null} key
+ * @param {string | null} [chord]
+ */
+export function setRealTimeKey(key, chord) {
+  const norm = (v) => (v != null && String(v) !== 'NaN' && String(v).trim() !== '' ? String(v).trim() : null);
+  realTimeKey = norm(key);
+  if (chord !== undefined) realTimeChord = norm(chord);
+  onRealtimeUpdate();
 }
 
 function notify() {
@@ -119,6 +159,11 @@ export function setCurrentIndex(index) {
   startedAt = currentIndex !== null ? Date.now() : null;
   currentTime = 0;
   isPaused = currentIndex === null;
+  if (currentIndex === null) {
+    realTimeKey = null;
+    realTimeChord = null;
+    onRealtimeUpdate();
+  }
   notify();
 }
 

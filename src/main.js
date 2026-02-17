@@ -1,8 +1,9 @@
 import './styles.css';
 import { initDropzone } from './dropzone.js';
 import { initList } from './list.js';
-import { getItems, setCurrentIndex, getCurrentIndex, getNextPlaybackAction, setCurrentTime, setPaused, loadListData } from './state.js';
+import { getItems, setCurrentIndex, getCurrentIndex, getNextPlaybackAction, setCurrentTime, setPaused, getIsPaused, loadListData, setRealTimeKey, subscribeToRealtime, getRealTimeKey, getRealTimeChord } from './state.js';
 import { play as audioPlay, pause as audioPause, setOnEnded, getAudioElement } from './audio.js';
+import { decodeToBuffer, analyzeKeyFromSegment, analyzeChordFromSegment } from './audioAnalysis.js';
 import { formatMmSs } from './utils.js';
 import * as levelMeter from './levelMeter.js';
 import * as levelMeterDisplay from './levelMeterDisplay.js';
@@ -10,6 +11,10 @@ import { listToText, textToList } from './listSaveLoad.js';
 
 /** 再生用に使っている Object URL（ループで再利用するため保持） */
 let currentPlayUrl = null;
+/** 再生中トラックのデコード済みバッファ（リアルタイム Key 用）。トラック変更・停止で null にする */
+let currentPlayBuffer = null;
+/** リアルタイム Key の更新間隔用タイマー ID */
+let realtimeKeyTimerId = null;
 
 function playItemAtIndex(index) {
   const items = getItems();
@@ -21,10 +26,21 @@ function playItemAtIndex(index) {
     URL.revokeObjectURL(currentPlayUrl);
     currentPlayUrl = URL.createObjectURL(item.file);
   }
+  currentPlayBuffer = null;
+  if (realtimeKeyTimerId != null) {
+    clearInterval(realtimeKeyTimerId);
+    realtimeKeyTimerId = null;
+  }
   levelMeter.start(getAudioElement());
   audioPlay(currentPlayUrl);
   setCurrentIndex(index);
   setPaused(false);
+  decodeToBuffer(item.file).then((buf) => {
+    if (getCurrentIndex() === index) {
+      currentPlayBuffer = buf;
+      startRealtimeKeyUpdates();
+    }
+  }).catch(() => {});
 }
 
 function handleEnded() {
@@ -41,11 +57,27 @@ function handleEnded() {
     const item = items[action.index];
     if (currentPlayUrl) URL.revokeObjectURL(currentPlayUrl);
     currentPlayUrl = URL.createObjectURL(item.file);
+    currentPlayBuffer = null;
+    if (realtimeKeyTimerId != null) {
+      clearInterval(realtimeKeyTimerId);
+      realtimeKeyTimerId = null;
+    }
     audioPlay(currentPlayUrl);
+    decodeToBuffer(item.file).then((buf) => {
+      if (getCurrentIndex() === action.index) {
+        currentPlayBuffer = buf;
+        startRealtimeKeyUpdates();
+      }
+    }).catch(() => {});
     return;
   }
   if (action.action === 'stop') {
     setCurrentIndex(null);
+    currentPlayBuffer = null;
+    if (realtimeKeyTimerId != null) {
+      clearInterval(realtimeKeyTimerId);
+      realtimeKeyTimerId = null;
+    }
     if (currentPlayUrl) {
       URL.revokeObjectURL(currentPlayUrl);
       currentPlayUrl = null;
@@ -61,10 +93,36 @@ function pausePlayback() {
 function stopPlayback() {
   audioPause();
   setCurrentIndex(null);
+  currentPlayBuffer = null;
+  if (realtimeKeyTimerId != null) {
+    clearInterval(realtimeKeyTimerId);
+    realtimeKeyTimerId = null;
+  }
   if (currentPlayUrl) {
     URL.revokeObjectURL(currentPlayUrl);
     currentPlayUrl = null;
   }
+}
+
+function startRealtimeKeyUpdates() {
+  if (realtimeKeyTimerId != null) return;
+  realtimeKeyTimerId = setInterval(() => {
+    const idx = getCurrentIndex();
+    if (idx === null || !currentPlayBuffer || getIsPaused()) return;
+    const items = getItems();
+    const item = items[idx];
+    const duration = item?.duration ?? currentPlayBuffer.duration;
+    const audio = getAudioElement();
+    const t = audio.currentTime;
+    const startSec = Math.max(0, t - 2);
+    const endSec = Math.min(duration, t + 1);
+    Promise.all([
+      analyzeKeyFromSegment(currentPlayBuffer, startSec, endSec),
+      analyzeChordFromSegment(currentPlayBuffer, startSec, endSec),
+    ]).then(([key, chord]) => {
+      if (getCurrentIndex() === idx) setRealTimeKey(key, chord);
+    });
+  }, 1500);
 }
 
 function seekPlayback(seconds) {
@@ -155,6 +213,16 @@ function init() {
   if (levelMetersEl) {
     levelMeterDisplay.init(levelMetersEl, () => levelMeter.getLevels());
   }
+
+  const realtimeKeyEl = document.getElementById('realtime-key');
+  const realtimeChordEl = document.getElementById('realtime-chord');
+  function updateRealtimeDisplay() {
+    const fmt = (v) => (v != null && String(v) !== 'NaN' ? v : '—');
+    if (realtimeKeyEl) realtimeKeyEl.textContent = fmt(getRealTimeKey());
+    if (realtimeChordEl) realtimeChordEl.textContent = fmt(getRealTimeChord());
+  }
+  subscribeToRealtime(updateRealtimeDisplay);
+  updateRealtimeDisplay();
 
   setInterval(() => {
     const items = getItems();

@@ -121,6 +121,22 @@ body {
   transition: width 0.2s ease-out;
 }
 
+.realtime-tonal {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.realtime-tonal-label {
+  font-weight: 600;
+}
+
+.realtime-tonal-value {
+  min-width: 3.5em;
+}
+
 .level-meters {
   display: flex;
   align-items: center;
