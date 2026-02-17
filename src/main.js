@@ -288,7 +288,7 @@ function init() {
   if (btnNext) btnNext.addEventListener('click', goToNext);
 
   if (levelMetersEl) {
-    levelMeterDisplay.init(levelMetersEl, () => levelMeter.getLevels());
+    levelMeterDisplay.init(levelMetersEl, (numBands) => levelMeter.getLevelsBands(numBands));
   }
 
   const realtimeKeyEl = document.getElementById('realtime-key');

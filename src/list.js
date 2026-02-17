@@ -9,7 +9,7 @@ import {
   subscribeToTime,
 } from './state.js';
 import { formatMmSs, parseMmSs, getListStartTimes } from './utils.js';
-import { loadBpm, loadKey } from './audioAnalysis.js';
+import { loadBpm, loadKey, loadMood } from './audioAnalysis.js';
 
 /** @type {HTMLElement | null} */
 let containerEl = null;
@@ -110,11 +110,11 @@ export function renderList() {
         <th class="col-duration">素材の長さ</th>
         <th class="col-bpm">BPM</th>
         <th class="col-key">Key</th>
+        <th class="col-mood">Mood</th>
         <th class="col-loop">ループ</th>
         <th class="col-max">最大再生時間</th>
         <th class="col-controls">再生</th>
         <th class="col-position">再生位置</th>
-        <th class="col-playing"></th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -125,6 +125,7 @@ export function renderList() {
     if (item.duration === null) loadDuration(item);
     if (item.bpm === null) loadBpm(item);
     if (item.key === null) loadKey(item);
+    if (item.mood === null) loadMood(item);
 
     const tr = document.createElement('tr');
     tr.dataset.index = String(index);
@@ -155,6 +156,10 @@ export function renderList() {
     const keyCell = document.createElement('td');
     keyCell.className = 'col-key';
     keyCell.textContent = item.key != null && item.key !== '' ? item.key : '—';
+
+    const moodCell = document.createElement('td');
+    moodCell.className = 'col-mood';
+    moodCell.textContent = item.mood != null && item.mood !== '' ? item.mood : '…';
 
     const loopCell = document.createElement('td');
     loopCell.className = 'col-loop';
@@ -253,13 +258,7 @@ export function renderList() {
       positionCell.textContent = '—';
     }
 
-    const playingCell = document.createElement('td');
-    playingCell.className = 'col-playing';
-    if (currentIndex === index) {
-      playingCell.innerHTML = '<span class="playing-mark">▶</span>';
-    }
-
-    tr.append(grip, nameCell, startCell, durationCell, bpmCell, keyCell, loopCell, maxCell, controlsCell, positionCell, playingCell);
+    tr.append(grip, nameCell, startCell, durationCell, bpmCell, keyCell, moodCell, loopCell, maxCell, controlsCell, positionCell);
 
     tr.addEventListener('click', (e) => {
       if ((e.target.closest('button') || e.target.closest('input') || e.target.closest('.col-position')) !== null) return;

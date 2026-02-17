@@ -51,24 +51,35 @@ function maxDbInRange(arr, start, end) {
 }
 
 /**
- * Low / Mid / Hi のレベルを 実際の dB で返す。未初期化時は DB_SILENCE。
- * getFloatFrequencyData は 20*log10(magnitude) なので、0 dB = フルスケールを超えない。
- * @returns {{ low: number; mid: number; hi: number }}
+ * 指定バンド数で周波数ビンを等分し、各バンドの最大 dB を返す。
+ * 未初期化時は全バンド DB_SILENCE。
+ * @param {number} numBands 3〜7
+ * @returns {number[]}
  */
-export function getLevels() {
+export function getLevelsBands(numBands) {
+  const bands = Math.max(3, Math.min(7, Math.round(numBands)));
   if (!analyser || !frequencyDataFloat) {
-    return { low: DB_SILENCE, mid: DB_SILENCE, hi: DB_SILENCE };
+    return new Array(bands).fill(DB_SILENCE);
   }
   if (audioContext?.state === 'suspended') {
     audioContext.resume?.();
   }
   analyser.getFloatFrequencyData(frequencyDataFloat);
   const n = frequencyDataFloat.length;
-  const lowEnd = Math.min(3, n);
-  const midEnd = Math.min(Math.floor(n * 0.4), n);
-  return {
-    low: maxDbInRange(frequencyDataFloat, 0, lowEnd),
-    mid: maxDbInRange(frequencyDataFloat, lowEnd, midEnd),
-    hi: maxDbInRange(frequencyDataFloat, midEnd, n),
-  };
+  const out = [];
+  for (let i = 0; i < bands; i++) {
+    const start = Math.floor((i * n) / bands);
+    const end = Math.floor(((i + 1) * n) / bands);
+    out.push(maxDbInRange(frequencyDataFloat, start, Math.max(start, end)));
+  }
+  return out;
+}
+
+/**
+ * Low / Mid / Hi のレベルを 実際の dB で返す。未初期化時は DB_SILENCE。
+ * @returns {{ low: number; mid: number; hi: number }}
+ */
+export function getLevels() {
+  const [low, mid, hi] = getLevelsBands(3);
+  return { low, mid, hi };
 }

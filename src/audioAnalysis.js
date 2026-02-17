@@ -5,8 +5,23 @@ import { updateItem } from './state.js';
 const analyzingBpmIds = new Set();
 /** Key 解析中の id を保持 */
 const analyzingKeyIds = new Set();
+/** Mood 解析中の id を保持 */
+const analyzingMoodIds = new Set();
 /** Essentia インスタンス（遅延初期化） */
 let essentiaInstance = null;
+
+/** MusiCNN msd-musicnn-1 の 50 クラス（metadata の classes 順） */
+const MUSICNN_CLASSES = [
+  'rock', 'pop', 'alternative', 'indie', 'electronic', 'female vocalists', 'dance', '00s',
+  'alternative rock', 'jazz', 'beautiful', 'metal', 'chillout', 'male vocalists', 'classic rock',
+  'soul', 'indie rock', 'Mellow', 'electronica', '80s', 'folk', '90s', 'chill', 'instrumental',
+  'punk', 'oldies', 'blues', 'hard rock', 'ambient', 'acoustic', 'experimental', 'female vocalist',
+  'guitar', 'Hip-Hop', '70s', 'party', 'country', 'easy listening', 'sexy', 'catchy', 'funk',
+  'electro', 'heavy metal', 'Progressive rock', '60s', 'rnb', 'indie pop', 'sad', 'House', 'happy'
+];
+
+/** Mood 表示用モデル（MTG/essentia.js の examples から jsDelivr で取得。ZIP 不要） */
+const MOOD_MODEL_URL = 'https://cdn.jsdelivr.net/gh/MTG/essentia.js@master/examples/demos/autotagging-rt/data/msd-musicnn-1/model.json';
 
 /**
  * ファイルをデコードして AudioBuffer を取得
@@ -117,6 +132,52 @@ export function loadKey(item) {
       updateItem(item.id, { key: '' });
     })
     .finally(() => analyzingKeyIds.delete(item.id));
+}
+
+/**
+ * MusiCNN（EssentiaModel）で 1 件の mood タグを取得して state に反映。
+ * TensorFlow.js と essentia.js-model を index.html で読み込むこと。
+ * モデルは GitHub (MTG/essentia.js examples) を jsDelivr 経由で読み込む。ZIP のダウンロードは不要。
+ * @param {{ id: string; file: File; mood: string | null }} item
+ */
+export function loadMood(item) {
+  if ((item.mood != null && item.mood !== '') || analyzingMoodIds.has(item.id)) return;
+  if (typeof window.EssentiaModel === 'undefined' || typeof window.tf === 'undefined') return;
+  analyzingMoodIds.add(item.id);
+  (async () => {
+    try {
+      await getEssentia();
+      const wasmModule = await window.EssentiaWASM();
+      const extractor = new window.EssentiaModel.EssentiaTFInputExtractor(wasmModule, 'musicnn');
+      const buffer = await decodeToBuffer(item.file);
+      const audioData = await extractor.downsampleAudioBuffer(buffer, 16000);
+      const features = await extractor.computeFrameWise(audioData, 256);
+      const musicnn = new window.EssentiaModel.TensorflowMusiCNN(window.tf, MOOD_MODEL_URL, true);
+      await musicnn.initialize();
+      let predictions = await musicnn.predict(features, true);
+      if (predictions && typeof predictions.arraySync === 'function') predictions = predictions.arraySync();
+      const activations = Array.isArray(predictions) && predictions.length > 0
+        ? (Array.isArray(predictions[0]) ? predictions : [predictions])
+        : [];
+      if (activations.length === 0) {
+        updateItem(item.id, { mood: '' });
+        return;
+      }
+      const numClasses = Math.min(MUSICNN_CLASSES.length, activations[0].length);
+      const sum = new Float32Array(numClasses);
+      for (const patch of activations) {
+        for (let i = 0; i < numClasses; i++) sum[i] += patch[i];
+      }
+      const order = Array.from({ length: numClasses }, (_, i) => i)
+        .sort((a, b) => sum[b] - sum[a]);
+      const top = order.slice(0, 3).map((i) => MUSICNN_CLASSES[i]).filter(Boolean);
+      updateItem(item.id, { mood: top.join(', ') || '' });
+    } catch (_) {
+      updateItem(item.id, { mood: '' });
+    } finally {
+      analyzingMoodIds.delete(item.id);
+    }
+  })();
 }
 
 const FRAME_SIZE = 4096;

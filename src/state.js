@@ -1,4 +1,4 @@
-/** @typedef {{ id: string; file: File; name: string; loop: boolean; maxLoopSeconds: number | null; duration: number | null; bpm: number | null; key: string | null }} ListItem */
+/** @typedef {{ id: string; file: File; name: string; loop: boolean; maxLoopSeconds: number | null; duration: number | null; bpm: number | null; key: string | null; mood: string | null }} ListItem */
 
 /** @type {ListItem[]} */
 let items = [];
@@ -146,6 +146,7 @@ export function addFiles(files) {
       duration: null,
       bpm: null,
       key: null,
+      mood: null,
     });
   }
   notify();
@@ -236,7 +237,7 @@ export function moveItem(fromIndex, toIndex) {
 
 /**
  * @param {string} id
- * @param {{ loop?: boolean; maxLoopSeconds?: number | null; duration?: number | null; bpm?: number | null; key?: string | null }} patch
+ * @param {{ loop?: boolean; maxLoopSeconds?: number | null; duration?: number | null; bpm?: number | null; key?: string | null; mood?: string | null }} patch
  */
 export function updateItem(id, patch) {
   const i = items.findIndex((it) => it.id === id);
@@ -246,6 +247,7 @@ export function updateItem(id, patch) {
   if (patch.duration !== undefined) items[i].duration = patch.duration;
   if (patch.bpm !== undefined) items[i].bpm = patch.bpm;
   if (patch.key !== undefined) items[i].key = patch.key;
+  if (patch.mood !== undefined) items[i].mood = patch.mood;
   notify();
 }
 

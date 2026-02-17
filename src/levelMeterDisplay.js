@@ -2,22 +2,33 @@
 const HISTORY_LEN = 100;
 const SAMPLE_MS = 10;
 
-/** @type {number[]} */
-const lowBuf = new Array(HISTORY_LEN).fill(0);
-/** @type {number[]} */
-const midBuf = new Array(HISTORY_LEN).fill(0);
-/** @type {number[]} */
-const hiBuf = new Array(HISTORY_LEN).fill(0);
+/** バンド数 3〜7 に対応する履歴バッファの配列。bandsBuf[i] が i 番目のバンド */
+let bandsBuf = [
+  new Array(HISTORY_LEN).fill(0),
+  new Array(HISTORY_LEN).fill(0),
+  new Array(HISTORY_LEN).fill(0),
+];
 let writeIndex = 0;
+/** 現在のバンド数（3〜7） */
+let bandCount = 3;
 
 /** @type {HTMLCanvasElement | null} */
 let canvas = null;
 /** @type {number} */
 let animationId = 0;
+/** @type {(numBands: number) => number[]} */
+let getLevelsForBands = () => [];
 
-const LOW_COLOR = '#2e7d32';
-const MID_COLOR = '#1565c0';
-const HI_COLOR = '#c62828';
+/** 最大7バンド用の色（3バンド時は 0,1,2 を Low/Mid/Hi に相当） */
+const BAND_COLORS = [
+  '#2e7d32', // 0: Low
+  '#1565c0', // 1: Mid
+  '#c62828', // 2: Hi
+  '#6a1b9a', // 3
+  '#ef6c00', // 4
+  '#00838f', // 5
+  '#558b2f', // 6
+];
 
 const LOGICAL_WIDTH = 200;
 const LOGICAL_HEIGHT = 60;
@@ -105,11 +116,11 @@ function clampDb(db) {
   return Math.max(DB_MIN, Math.min(DB_MAX, d));
 }
 
-function tick(getLevels) {
-  const levels = getLevels();
-  lowBuf[writeIndex] = clampDb(levels.low);
-  midBuf[writeIndex] = clampDb(levels.mid);
-  hiBuf[writeIndex] = clampDb(levels.hi);
+function tick() {
+  const levels = getLevelsForBands(bandCount);
+  for (let i = 0; i < bandCount; i++) {
+    bandsBuf[i][writeIndex] = clampDb(levels[i] ?? -60);
+  }
   writeIndex = (writeIndex + 1) % HISTORY_LEN;
 
   if (!canvas) return;
@@ -123,26 +134,77 @@ function tick(getLevels) {
 
   ctx.clearRect(0, 0, w, h);
   drawAxis(ctx, h);
-  drawLineStrip(ctx, lowBuf, LOW_COLOR, graphWidth, h, offsetX);
-  drawLineStrip(ctx, midBuf, MID_COLOR, graphWidth, h, offsetX);
-  drawLineStrip(ctx, hiBuf, HI_COLOR, graphWidth, h, offsetX);
+  for (let i = 0; i < bandCount; i++) {
+    drawLineStrip(ctx, bandsBuf[i], BAND_COLORS[i], graphWidth, h, offsetX);
+  }
+}
+
+function ensureBuffersForBands(n) {
+  const num = Math.max(3, Math.min(7, Math.round(n)));
+  if (bandsBuf.length !== num) {
+    bandsBuf = Array.from({ length: num }, () => new Array(HISTORY_LEN).fill(0));
+  }
+  bandCount = num;
+}
+
+const BAND_LABELS_3 = ['Low', 'Mid', 'Hi'];
+
+function renderLabels() {
+  const labelRow = document.querySelector('.level-strip-labels');
+  if (!labelRow) return;
+  labelRow.innerHTML = '';
+  for (let i = 0; i < bandCount; i++) {
+    const span = document.createElement('span');
+    span.className = 'level-legend';
+    span.style.color = BAND_COLORS[i];
+    span.textContent = bandCount === 3 ? BAND_LABELS_3[i] : String(i + 1);
+    labelRow.appendChild(span);
+  }
 }
 
 /**
- * ストリップ表示を開始。10msごとにサンプルして左にスクロールする3ラインを描画する。
+ * ストリップ表示を開始。バンド数 3〜7 を選択可能。
  * @param {HTMLElement} container
- * @param {() => { low: number; mid: number; hi: number }} getLevels
+ * @param {(numBands: number) => number[]} getLevelsFn
  */
-export function init(container, getLevels) {
+export function init(container, getLevelsFn) {
   if (!container) return;
+
+  getLevelsForBands = getLevelsFn;
+  ensureBuffersForBands(3);
 
   container.innerHTML = '';
   const wrap = document.createElement('div');
   wrap.className = 'level-strip-wrap';
-  wrap.setAttribute('aria-label', 'レベルメーター（Low / Mid / Hi 過去1秒・共通縦軸）');
+  wrap.setAttribute('aria-label', 'レベルメーター（バンド数選択・過去1秒・共通縦軸）');
+
+  const topRow = document.createElement('div');
+  topRow.className = 'level-strip-top';
   const labelRow = document.createElement('div');
   labelRow.className = 'level-strip-labels';
-  labelRow.innerHTML = '<span class="level-legend low">Low</span><span class="level-legend mid">Mid</span><span class="level-legend hi">Hi</span>';
+  const selectWrap = document.createElement('div');
+  selectWrap.className = 'level-strip-bands-select';
+  const select = document.createElement('select');
+  select.setAttribute('aria-label', 'バンド数');
+  for (let n = 3; n <= 7; n++) {
+    const opt = document.createElement('option');
+    opt.value = String(n);
+    opt.textContent = `${n}バンド`;
+    if (n === 3) opt.selected = true;
+    select.appendChild(opt);
+  }
+  select.addEventListener('change', () => {
+    const n = Number(select.value);
+    ensureBuffersForBands(n);
+    renderLabels();
+  });
+  selectWrap.appendChild(select);
+  topRow.appendChild(labelRow);
+  topRow.appendChild(selectWrap);
+  wrap.appendChild(topRow);
+
+  renderLabels();
+
   canvas = document.createElement('canvas');
   canvas.className = 'level-strip-canvas';
   const dpr = window.devicePixelRatio || 1;
@@ -152,7 +214,6 @@ export function init(container, getLevels) {
   canvas.style.height = `${LOGICAL_HEIGHT}px`;
   const ctx = canvas.getContext('2d');
   if (ctx) ctx.scale(dpr, dpr);
-  wrap.appendChild(labelRow);
   wrap.appendChild(canvas);
   container.appendChild(wrap);
 
@@ -160,7 +221,7 @@ export function init(container, getLevels) {
   function loop(now) {
     if (now - last >= SAMPLE_MS) {
       last = now;
-      tick(getLevels);
+      tick();
     }
     animationId = requestAnimationFrame(loop);
   }
