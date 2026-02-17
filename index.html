@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>オーディオプレビュー</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div id="dropzone" class="dropzone"></div>
+      <div class="list-toolbar">
+        <button type="button" id="btn-save-list" class="toolbar-btn">セーブ</button>
+        <button type="button" id="btn-load-list" class="toolbar-btn">ロード</button>
+        <input type="file" id="input-load-list" accept=".txt,text/plain" hidden />
+      </div>
+      <div class="elapsed-row">
+        <div class="elapsed-block">
+          <div class="elapsed-top">
+            <span id="elapsed-display" class="elapsed-display" aria-live="polite">再生経過: 0:00 / 0:00</span>
+            <button type="button" id="btn-next" class="elapsed-btn-next" aria-label="次へ" title="次の行へ">
+              <svg class="elapsed-btn-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+            </button>
+          </div>
+          <div class="elapsed-progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+            <div id="elapsed-progress-fill" class="elapsed-progress-fill"></div>
+          </div>
+        </div>
+        <div id="level-meters" class="level-meters"></div>
+      </div>
+      <div id="list-container"></div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
