@@ -83,6 +83,91 @@ body {
   color: #333;
 }
 
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
+}
+
+.transport-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+}
+
+.transport-btn:hover {
+  background: #f0f0f0;
+  border-color: #999;
+}
+
+.transport-btn-play {
+  width: 40px;
+  background: #1565c0;
+  color: #fff;
+  border-color: #0d47a1;
+}
+
+.transport-btn-play:hover {
+  background: #1976d2;
+  border-color: #1565c0;
+}
+
+.transport-icon {
+  display: block;
+  fill: currentColor;
+}
+
+.transport-speed-label {
+  margin-left: 0.5rem;
+  margin-right: 0.25rem;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.transport-speed {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.transport-speed-btn {
+  min-width: 2.25rem;
+  height: 28px;
+  padding: 0 0.4rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  color: #333;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.transport-speed-btn:hover {
+  background: #f0f0f0;
+  border-color: #999;
+}
+
+.transport-speed-btn.is-active {
+  background: #1565c0;
+  color: #fff;
+  border-color: #0d47a1;
+}
+
+.transport-speed-btn.is-active:hover {
+  background: #1976d2;
+  border-color: #1565c0;
+}
+
 .elapsed-btn-next {
   display: inline-flex;
   align-items: center;

@@ -1,7 +1,7 @@
 import './styles.css';
 import { initDropzone } from './dropzone.js';
 import { initList } from './list.js';
-import { getItems, setCurrentIndex, getCurrentIndex, getNextPlaybackAction, setCurrentTime, setPaused, getIsPaused, getStartedAt, setStartedAt, loadListData, setRealTimeKey, subscribeToRealtime, getRealTimeKey, getRealTimeChord } from './state.js';
+import { getItems, setCurrentIndex, getCurrentIndex, getCurrentTime, getNextPlaybackAction, setCurrentTime, setPaused, getIsPaused, getPlaybackRate, setPlaybackRate, getStartedAt, setStartedAt, loadListData, setRealTimeKey, subscribeToRealtime, getRealTimeKey, getRealTimeChord } from './state.js';
 import { play as audioPlay, pause as audioPause, setOnEnded, getAudioElement } from './audio.js';
 import { decodeToBuffer, analyzeKeyFromSegment, analyzeChordFromSegment } from './audioAnalysis.js';
 import { formatMmSs, getTrackLength, getListStartTimes } from './utils.js';
@@ -17,6 +17,11 @@ let currentPlayBuffer = null;
 let realtimeKeyTimerId = null;
 /** 現在トラックでループにより既に再生した秒数（再生経過の加算用） */
 let currentTrackLoopElapsed = 0;
+
+function applyPlaybackRate() {
+  const el = getAudioElement();
+  if (el) el.playbackRate = getPlaybackRate();
+}
 
 function playItemAtIndex(index) {
   const items = getItems();
@@ -35,6 +40,7 @@ function playItemAtIndex(index) {
   }
   levelMeter.start(getAudioElement());
   audioPlay(currentPlayUrl);
+  applyPlaybackRate();
   setCurrentIndex(index);
   setPaused(false);
   currentTrackLoopElapsed = 0;
@@ -59,6 +65,7 @@ function performPlaybackAction(action) {
     }
     setPaused(false);
     audioPlay(currentPlayUrl);
+    applyPlaybackRate();
     return;
   }
   if (action.action === 'next') {
@@ -71,6 +78,7 @@ function performPlaybackAction(action) {
     currentPlayUrl = URL.createObjectURL(item.file);
     currentPlayBuffer = null;
     audioPlay(currentPlayUrl);
+    applyPlaybackRate();
     startRealtimeKeyUpdates();
     decodeToBuffer(item.file).then((buf) => {
       if (getCurrentIndex() !== action.index) return;
@@ -194,6 +202,7 @@ function seekToAbsoluteListTime(listTimeSec) {
   const onReady = () => {
     audio.currentTime = positionInCurrentLoop;
     setCurrentTime(positionInCurrentLoop);
+    applyPlaybackRate();
     audio.play().catch(() => {});
     levelMeter.start(audio);
     startRealtimeKeyUpdates();
@@ -205,6 +214,47 @@ function seekToAbsoluteListTime(listTimeSec) {
     onReady();
   } else {
     audio.addEventListener('canplay', onReady, { once: true });
+  }
+}
+
+/** 前の曲へ、または再生中なら曲の頭に戻る（約3秒以上経過時は頭に戻すだけ） */
+function goToPrevious() {
+  const items = getItems();
+  const idx = getCurrentIndex();
+  if (items.length === 0) return;
+  const audio = getAudioElement();
+  if (idx !== null && getCurrentTime() >= 3) {
+    seekPlayback(0);
+    if (getIsPaused()) audio.play().catch(() => {});
+    setPaused(false);
+    return;
+  }
+  if (idx !== null && idx > 0) {
+    playItemAtIndex(idx - 1);
+    return;
+  }
+  if (idx === 0) {
+    seekPlayback(0);
+    if (getIsPaused()) audio.play().catch(() => {});
+    setPaused(false);
+  }
+}
+
+/** 再生／一時停止をトグル。停止中なら先頭を再生。 */
+function togglePlayPause() {
+  const items = getItems();
+  const idx = getCurrentIndex();
+  if (items.length === 0) return;
+  if (idx === null) {
+    playItemAtIndex(0);
+    return;
+  }
+  if (getIsPaused()) {
+    applyPlaybackRate();
+    getAudioElement().play().catch(() => {});
+    setPaused(false);
+  } else {
+    pausePlayback();
   }
 }
 
@@ -281,11 +331,29 @@ function init() {
   const progressSegmentsEl = document.getElementById('elapsed-progress-segments');
   let lastSegmentCount = 0;
   let lastListTotal = 0;
+  const btnPrev = document.getElementById('btn-prev');
+  const btnPlayPause = document.getElementById('btn-play-pause');
   const btnNext = document.getElementById('btn-next');
   const levelMetersEl = document.getElementById('level-meters');
   const audio = getAudioElement();
 
+  if (btnPrev) btnPrev.addEventListener('click', goToPrevious);
+  if (btnPlayPause) btnPlayPause.addEventListener('click', togglePlayPause);
   if (btnNext) btnNext.addEventListener('click', goToNext);
+
+  const transportSpeedEl = document.querySelector('.transport-speed');
+  if (transportSpeedEl) {
+    transportSpeedEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('.transport-speed-btn');
+      if (!btn) return;
+      const rate = parseFloat(btn.dataset.rate);
+      if (!Number.isFinite(rate)) return;
+      setPlaybackRate(rate);
+      applyPlaybackRate();
+      transportSpeedEl.querySelectorAll('.transport-speed-btn').forEach((b) => b.classList.remove('is-active'));
+      btn.classList.add('is-active');
+    });
+  }
 
   if (levelMetersEl) {
     levelMeterDisplay.init(levelMetersEl, (numBands) => levelMeter.getLevelsBands(numBands));
@@ -363,6 +431,15 @@ function init() {
     if (idx !== null) {
       const sec = audio.currentTime;
       setCurrentTime(sec);
+    }
+
+    if (btnPlayPause) {
+      const isPlaying = idx !== null && !getIsPaused();
+      const playIcon = btnPlayPause.querySelector('.transport-icon-play');
+      const pauseIcon = btnPlayPause.querySelector('.transport-icon-pause');
+      btnPlayPause.setAttribute('aria-label', isPlaying ? '一時停止' : '再生');
+      if (playIcon) playIcon.style.display = isPlaying ? 'none' : 'block';
+      if (pauseIcon) pauseIcon.style.display = isPlaying ? 'block' : 'none';
     }
   }, 500);
 }

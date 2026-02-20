@@ -15,6 +15,9 @@ let currentTime = 0;
 /** @type {boolean} 一時停止中か（currentIndex が有効なときのみ意味を持つ） */
 let isPaused = false;
 
+/** @type {number} 再生速度（1 = 等速、2 = 2倍速） */
+let playbackRate = 1;
+
 /** @type {(items: ListItem[], currentIndex: number | null) => void} */
 let onUpdate = () => {};
 
@@ -113,6 +116,21 @@ export function getCurrentTime() {
  */
 export function getIsPaused() {
   return isPaused;
+}
+
+/**
+ * @returns {number}
+ */
+export function getPlaybackRate() {
+  return playbackRate;
+}
+
+/**
+ * @param {number} rate
+ */
+export function setPlaybackRate(rate) {
+  const r = Number(rate);
+  if (Number.isFinite(r) && r >= 0.25 && r <= 4) playbackRate = r;
 }
 
 /**
