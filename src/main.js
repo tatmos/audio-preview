@@ -385,25 +385,20 @@ function init() {
   setInterval(() => {
     const items = getItems();
     const idx = getCurrentIndex();
-
-    if (idx !== null && idx < items.length && !getIsPaused()) {
-      const item = items[idx];
-      const startedAt = getStartedAt();
-      if (startedAt != null && item.loop && item.maxLoopSeconds != null && item.maxLoopSeconds > 0) {
-        const elapsed = (Date.now() - startedAt) / 1000;
-        if (elapsed >= item.maxLoopSeconds) {
-          audioPause();
-          performPlaybackAction(getNextPlaybackAction());
-          return;
-        }
-      }
-    }
-
     const listTotal = items.reduce((sum, it) => sum + getTrackLength(it), 0);
     let listElapsed = 0;
     if (idx !== null && idx >= 0) {
       const listStartTimes = getListStartTimes(items);
       listElapsed = listStartTimes[idx] + currentTrackLoopElapsed + audio.currentTime;
+    }
+
+    if (idx !== null && idx < items.length && !getIsPaused()) {
+      const item = items[idx];
+      if (item.loop && item.maxLoopSeconds != null && item.maxLoopSeconds > 0 && audio.currentTime >= item.maxLoopSeconds) {
+        audioPause();
+        performPlaybackAction(getNextPlaybackAction());
+        return;
+      }
     }
     if (elapsedEl) {
       elapsedEl.textContent = `再生経過: ${formatMmSs(listElapsed)} / ${formatMmSs(listTotal)}`;
